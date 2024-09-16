@@ -7,9 +7,14 @@ from apscheduler.triggers.cron import CronTrigger
 from pymongo import MongoClient
 import logging
 from datetime import datetime
+import os
+from dotenv import load_dotenv
+
+# Загружаем переменные окружения из файла .env
+load_dotenv()
 
 # Вставьте свой токен сюда
-TOKEN = '6564190447:AAHhcpd9FiC-Yl6Jsns0VO20p8B7RrpuBIY'
+TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
 # Подключение к MongoDB
 client = MongoClient('mongodb://localhost:27017/')
@@ -123,11 +128,20 @@ async def send_update_to_users(context: ContextTypes.DEFAULT_TYPE):
         if followed_products:
             messages = []
             for product in followed_products:
-                name = product['name']
-                last_price = product['lastprice']
-                messages.append(f'Товар {name}: {last_price} руб.')
-            message = '\n'.join(messages)
-            await context.bot.send_message(chat_id=chat_id, text=message)
+                # if product.get('has_changed', False):
+                    name = product['name']
+                    last_price = product['lastprice']
+                    messages.append(f'Товар: {name}\nНовая цена: {last_price} руб.')
+                    
+                    # Сброс флага has_changed после отправки сообщения
+                    users_collection.update_one(
+                        {'chat_id': chat_id, 'followed_products.product_id': product['product_id']},
+                        {'$set': {'followed_products.$.has_changed': False}}
+                    )
+            
+            if messages:
+                message = '\n\n'.join(messages)
+                await context.bot.send_message(chat_id=chat_id, text=message)
 
 def generate_url(articles):
     if articles:
@@ -190,6 +204,42 @@ async def unfollow(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     else:
         await update.message.reply_text('Пожалуйста, укажите артикул товара для удаления.')
 
+# Функция для очистки всех товаров пользователя
+def clear_followed_products(chat_id):
+    users_collection.update_one(
+        {'chat_id': chat_id},
+        {'$set': {'followed_products': []}}  # Очищаем массив товаров
+    )
+
+# Обработчик команды /clear
+async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id = update.message.chat_id
+    clear_followed_products(chat_id)
+    await update.message.reply_text('Ваш список товаров был успешно очищен.')
+
+# Функция для получения информации о текущих отслеживаемых товарах пользователя
+async def check_followed_products(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id = update.message.chat_id
+    user = users_collection.find_one({'chat_id': chat_id})
+    
+    if not user or not user.get('followed_products'):
+        await update.message.reply_text('У вас нет отслеживаемых товаров.')
+        return
+    
+    followed_products = user['followed_products']
+    
+    # Формируем сообщение с информацией о каждом отслеживаемом товаре
+    messages = []
+    for product in followed_products:
+        product_id = product['product_id']
+        name = product['name']
+        price = product['lastprice']
+    
+        messages.append(f'Артикул: {product_id}.\nТовар: {name}\nЦена: {price} руб.')
+    
+    message = '\n\n'.join(messages)
+    await update.message.reply_text(message)
+
 def main() -> None:
     # Создаем объект Application и передаем ему токен
     application = Application.builder().token(TOKEN).build()
@@ -199,10 +249,10 @@ def main() -> None:
     scheduler = AsyncIOScheduler()
 
     # Каждые 24 часа начиная с запуска бота
-    # scheduler.add_job(send_update_to_users, trigger=IntervalTrigger(days=1), args=[application])
+    scheduler.add_job(send_update_to_users, trigger=IntervalTrigger(minutes=1), args=[application])
 
     # Каждый день в 11 утра
-    scheduler.add_job(send_update_to_users, trigger=CronTrigger(hour=11, minute=0), args=[application])
+    # scheduler.add_job(send_update_to_users, trigger=CronTrigger(hour=11, minute=0), args=[application])
     scheduler.start()
 
     # Регистрируем обработчики команд
@@ -210,6 +260,8 @@ def main() -> None:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("follow", follow))
     application.add_handler(CommandHandler("unfollow", unfollow))
+    application.add_handler(CommandHandler("clear", clear))
+    application.add_handler(CommandHandler("check", check_followed_products))
 
     # Запускаем бота
     application.run_polling()
