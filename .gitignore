@@ -4,10 +4,6 @@
 *.pyd
 __pycache__/
 
-# Docker
-docker-compose.yml
-Dockerfile
-
 # Virtual Environment
 venv/
 env/
