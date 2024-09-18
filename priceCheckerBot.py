@@ -60,7 +60,6 @@ def get_user_products(chat_id):
 # Функция для обновления данных о товарах
 def update_product_data():
     print('Обновление данных о продуктах')
-    # Получаем все уникальные артикулы, на которые подписаны пользователи
     all_users = get_all_users()
     unique_product_ids = set()
 
@@ -69,79 +68,88 @@ def update_product_data():
         for product in followed_products:
             unique_product_ids.add(product['product_id'])
 
-    # Если нет товаров для обновления, ничего не делаем
     if not unique_product_ids:
         return
 
-    # Формируем запрос с артикулами
     article_list = ';'.join(map(str, unique_product_ids))
     url = f'https://card.wb.ru/cards/v2/detail?appType=1&curr=rub&dest=-1257786&locale=ru&spp=30&lang=ru&ab_testing=false&nm={article_list}'
-    
+
     try:
         response = requests.get(url)
         response.raise_for_status()
         data = response.json()
         products_data = data['data']['products']
 
-        # Обновляем данные о товарах для всех пользователей
         for product_data in products_data:
             product_id = product_data['id']
             name = product_data['name']
             new_price = product_data['sizes'][0]['price']['total'] / 100
 
-            # Обновляем информацию о товаре у всех пользователей, проверяя изменения цены
             users = users_collection.find({'followed_products.product_id': product_id})
             for user in users:
                 for followed_product in user['followed_products']:
                     if followed_product['product_id'] == product_id:
-                        old_price = followed_product['lastprice']
+                        old_price = followed_product.get('lastprice')
+                        previous_price = followed_product.get('previous_price', old_price)
                         has_changed = followed_product.get('has_changed', False)
 
-                        # Проверяем, изменилась ли цена
                         if new_price != old_price:
                             has_changed = True
                         else:
                             has_changed = False
 
-                        # Обновляем товар для пользователя
                         users_collection.update_one(
                             {'chat_id': user['chat_id'], 'followed_products.product_id': product_id},
                             {'$set': {
-                                'followed_products.$.name': name, 
+                                'followed_products.$.name': name,
                                 'followed_products.$.lastprice': new_price,
                                 'followed_products.$.has_changed': has_changed,
+                                'followed_products.$.previous_price': previous_price,
                                 'followed_products.$.last_updated': datetime.now()
                             }}
                         )
     except requests.RequestException as e:
         logging.error(f"Ошибка при обновлении данных о товарах: {e}")
+        
 
-
+# Функция для отправки обновлений пользователям
 async def send_update_to_users(context: ContextTypes.DEFAULT_TYPE):
     update_product_data()
     all_users = get_all_users()
+
     for user in all_users:
         chat_id = user['chat_id']
-        print(f'Отправляю рассылку ${chat_id}')
         followed_products = user.get('followed_products', [])
-        
+
         if followed_products:
             messages = []
             for product in followed_products:
-                # if product.get('has_changed', False):
+                if product.get('has_changed', False):
+                    product_id = product['product_id']
                     name = product['name']
                     last_price = product['lastprice']
-                    messages.append(f'Товар: {name}\nНовая цена: {last_price} руб.')
+                    previous_price = product.get('previous_price', last_price)
+
+                    # Рассчитываем изменение цены
+                    price_diff = last_price - previous_price
+                    price_diff_percent = (price_diff / previous_price) * 100 if previous_price > 0 else 0
+                    change_direction = "выросла" if price_diff > 0 else "упала"
                     
-                    # Сброс флага has_changed после отправки сообщения
+                    messages.append(f'Товар: {name}\n'
+                                    f'Новая цена: {last_price} руб.\n'
+                                    f'Цена {change_direction} на {abs(price_diff)} руб. ({abs(price_diff_percent):.2f}%)\n'
+                                    f'Ссылка: https://www.wildberries.ru/catalog/{product_id}/detail.aspx')
+
+                    # Сброс флага has_changed и обновление previous_price
                     users_collection.update_one(
                         {'chat_id': chat_id, 'followed_products.product_id': product['product_id']},
-                        {'$set': {'followed_products.$.has_changed': False}}
+                        {'$set': {'followed_products.$.has_changed': False,
+                                  'followed_products.$.previous_price': last_price}}  # Обновляем previous_price
                     )
-            
+
             if messages:
                 message = '\n\n'.join(messages)
-                await context.bot.send_message(chat_id=chat_id, text=message)
+                await context.bot.send_message(chat_id=chat_id, text=message, disable_web_page_preview=True)
 
 def generate_url(articles):
     if articles:
@@ -235,10 +243,10 @@ async def check_followed_products(update: Update, context: ContextTypes.DEFAULT_
         name = product['name']
         price = product['lastprice']
     
-        messages.append(f'Артикул: {product_id}.\nТовар: {name}\nЦена: {price} руб.')
+        messages.append(f'Артикул: {product_id}.\nТовар: {name}\nЦена: {price} руб.\nСсылка: https://www.wildberries.ru/catalog/{product_id}/detail.aspx')
     
     message = '\n\n'.join(messages)
-    await update.message.reply_text(message)
+    await update.message.reply_text(message, disable_web_page_preview=True)
 
 def main() -> None:
     # Создаем объект Application и передаем ему токен
