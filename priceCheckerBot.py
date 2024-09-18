@@ -16,10 +16,22 @@ load_dotenv()
 # Вставьте свой токен сюда
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
-# Подключение к MongoDB
-client = MongoClient('mongodb://localhost:27017/')
-db = client['telegram_bot_db']
+mongodb_uri = os.getenv('MONGODB_URI')
+
+# Ensure the URI is available
+if not mongodb_uri:
+    raise ValueError("MONGODB_URI is not set in the environment")
+
+# Connect to MongoDB
+client = MongoClient(mongodb_uri)
+
+# Access the database (replace 'appdb' with your database name if needed)
+db = client.get_database()  # This will use the database specified in the URI
+
+# Example usage: Access a collection and perform an operation
 users_collection = db['users']
+
+
 # Функция для добавления пользователя в базу данных, если его нет
 def add_user_if_not_exists(chat_id):
     existing_user = users_collection.find_one({'chat_id': chat_id})
