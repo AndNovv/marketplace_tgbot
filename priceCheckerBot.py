@@ -182,10 +182,45 @@ def extract_product_data(data):
     return product_list
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text('Привет! Я могу помочь отслеживать цены на товары на WB. Я не дам тебе пропустить изменение цены!')
+    await update.message.reply_text('Добро пожаловать! Этот бот поможет вам отслеживать изменения цен на товары на Wildberries и получать уведомления о снижении или повышении цен.\n /help - руководство пользователя')
+
+async def how(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    messages = []
+    messages.append('**Как работает бот:**\n\n'
+                    'Каждый день в 2 часа дня бот проверяет обновления цен на товары, которые вы отслеживаете. Если цена изменилась, вы получите уведомление с информацией о том, как изменилась цена (выросла или упала), на сколько рублей и процентов.\n\n'
+                    'Следите за своими товарами легко и не пропускайте выгодные предложения!'
+                    )
+    message = '\n\n'.join(messages)
+    await update.message.reply_text(message, parse_mode="Markdown")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text('Для того чтобы добавить новый товар для отслеживания используйте: /follow <артикул товара>\nУдалить Товар из отслеживания: /unfollow <артикул товара>')
+    messages = []
+    messages.append('**Основные команды:**\n\n'
+                    '/help\n'
+                    'Показывает список доступных команд\n\n'
+
+                    '/follow <артикул товара>\n'
+                    'Добавляет товар для отслеживания по артикулу.\n' 
+                    'Пример:\n'
+                    '```\n/follow 12345678\n```\n'
+
+                    '/unfollow <артикул товара>\n'
+                    'Удаляет товар из списка отслеживаемых.\n' 
+                    'Пример:\n'
+                    '```\n/unfollow 12345678\n```\n'
+                
+                    '/clear\n'
+                    'Полностью очищает список всех товаров, которые вы отслеживаете.\n\n'
+                
+                    '/check\n'
+                    'Показывает текущий список отслеживаемых товаров с их ценами.\n\n'
+
+                    '/how\n'
+                    'Краткое описание того, как работает этот бот.'
+                )
+    
+    message = '\n\n'.join(messages)
+    await update.message.reply_text(message, parse_mode="Markdown")
 
 
 async def follow(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -278,6 +313,7 @@ def main() -> None:
     # Регистрируем обработчики команд
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("how", how))
     application.add_handler(CommandHandler("follow", follow))
     application.add_handler(CommandHandler("unfollow", unfollow))
     application.add_handler(CommandHandler("clear", clear))
