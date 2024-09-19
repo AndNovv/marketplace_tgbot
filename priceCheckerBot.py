@@ -16,8 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-PRODUCTION = os.getenv('PRODUCTION')
-
+PRODUCTION = os.getenv('PROD')
 mongodb_uri = os.getenv('MONGODB_URI')
 
 # Ensure the URI is available
@@ -381,8 +380,8 @@ def main() -> None:
 
     # Настраиваем планировщик
     scheduler = AsyncIOScheduler()
-
-    if PRODUCTION == True:
+    
+    if PRODUCTION == 'true':
         # Каждый день в 11 утра
         scheduler.add_job(send_update_to_users, trigger=CronTrigger(hour=11, minute=0), args=[application])
     else:
