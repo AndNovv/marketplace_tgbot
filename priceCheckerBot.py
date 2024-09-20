@@ -73,7 +73,7 @@ def get_user_products(chat_id):
     return []
 
 
-def update_product_data():
+async def update_product_data():
     print('Обновление данных о продуктах')
     all_users = get_all_users()
     unique_product_ids = set()
@@ -151,7 +151,7 @@ def update_product_data():
 
 # Функция для отправки обновлений пользователям
 async def send_update_to_users(context: ContextTypes.DEFAULT_TYPE):
-    update_product_data()
+    await update_product_data()
     all_users = get_all_users()
 
     for user in all_users:
